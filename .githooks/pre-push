@@ -1,0 +1,14 @@
+#!/bin/sh
+# Audit the exact object IDs Git is about to transfer. The Python scanner reads
+# Git's four-field update records from stdin and fails closed on incomplete data.
+set -eu
+
+repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+python_bin="${PYTHON:-python3}"
+
+command -v "$python_bin" >/dev/null 2>&1 || {
+    echo "Privacy guard: Python is unavailable; refusing to push." >&2
+    exit 2
+}
+
+exec "$python_bin" "$repo_root/scripts/audit_public_repo.py" --pre-push

@@ -1,0 +1,69 @@
+[build-system]
+requires = ["setuptools>=77,<82", "wheel>=0.45,<1"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "alphamaxx-local"
+version = "0.1.0"
+description = "A local-first financial research terminal"
+readme = "README.md"
+requires-python = ">=3.11,<3.14"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{name = "Quentin Braithwaite"}]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+]
+dependencies = [
+  "python-fasthtml>=0.12,<0.15",
+  "duckdb>=1.1,<2",
+  "uvicorn>=0.29,<1",
+  "starlette>=0.40,<2",
+  "wrds>=3.5,<4",
+  "yfinance>=0.2.40,<1",
+  "pandas>=2,<3",
+  "numpy>=1.24,<3",
+  "requests>=2.31,<3",
+  "pytz>=2023.3",
+]
+
+[project.optional-dependencies]
+gemini = ["google-genai>=1,<2"]
+anthropic = ["anthropic>=0.40,<1"]
+openai = ["openai>=1,<3"]
+dev = [
+  "bandit>=1.8,<2",
+  "build>=1.2,<2",
+  "detect-secrets>=1.5,<2",
+  "pip-audit>=2.9,<3",
+  "pytest>=8,<9",
+]
+
+[project.scripts]
+alphamaxx = "alphamaxx.__main__:main"
+alphamaxx-ingest = "alphamaxx.services.ingestion:main"
+alphamaxx-econ = "alphamaxx.services.econ_calendar:main"
+
+[tool.setuptools.packages.find]
+include = ["alphamaxx*"]
+
+[tool.setuptools.package-data]
+"alphamaxx.services" = ["econ_seeds/*.md"]
+
+[tool.setuptools.data-files]
+"share/alphamaxx/static" = ["static/app.js", "static/style.css"]
+"share/alphamaxx/static/vendor" = [
+  "static/vendor/chart.umd.min.js",
+  "static/vendor/css-scope-inline.js",
+  "static/vendor/fasthtml.js",
+  "static/vendor/htmx.min.js",
+  "static/vendor/surreal.js",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
