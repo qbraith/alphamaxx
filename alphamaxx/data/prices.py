@@ -50,11 +50,15 @@ def upsert_price_bar(permno: int, price_date, open_, high, low, close,
 
 def upsert_stock_splits(permno: int, events: list[tuple[object, float]]) -> int:
     """Persist authoritative split dates and remove legacy weekly duplicates."""
-    valid = [
-        (permno, event_date, float(factor))
-        for event_date, factor in events
-        if factor is not None and float(factor) > 0 and float(factor) != 1.0
-    ]
+    valid = []
+    for event_date, raw_factor in events:
+        try:
+            factor = float(raw_factor)
+        except (TypeError, ValueError):
+            continue
+        if not math.isfinite(factor) or factor <= 0 or factor == 1.0:
+            continue
+        valid.append((permno, event_date, factor))
     if not valid:
         return 0
     with write_section() as con:

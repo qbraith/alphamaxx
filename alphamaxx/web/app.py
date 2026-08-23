@@ -9,12 +9,39 @@ after a deploy/redesign.
 from __future__ import annotations
 
 import hashlib
+import os
+import secrets
+import stat
+from pathlib import Path
 
 from fasthtml.common import Link, Script, fast_app
 from starlette.middleware import Middleware
 
 from alphamaxx.config import STATIC_DIR, ensure_private_path, settings
 from alphamaxx.web.security import ExactHostMiddleware, LocalRequestGuardMiddleware
+
+
+def _load_or_create_session_key(path: Path) -> str:
+    """Return an owner-only signing key without a world-readable create race."""
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags, 0o600)
+    except FileExistsError:
+        pass
+    else:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            handle.write(secrets.token_urlsafe(48))
+
+    if path.is_symlink() or not path.is_file():
+        raise RuntimeError("session key path must be a regular file")
+    ensure_private_path(path, directory=False)
+    if os.name != "nt" and not stat.S_ISREG(path.stat().st_mode):
+        raise RuntimeError("session key path must be a regular file")
+    key = path.read_text(encoding="utf-8").strip()
+    if not key:
+        raise RuntimeError("session key file is empty")
+    return key
 
 
 def _asset(path: str) -> str:
@@ -40,11 +67,13 @@ _hdrs = (
 # this directory, so pointing it at ROOT would serve source and docs too.
 ensure_private_path(settings.STATE_DIR, directory=True)
 _session_key = settings.STATE_DIR / ".sesskey"
+_session_secret = _load_or_create_session_key(_session_key)
 
 app, rt = fast_app(
     hdrs=_hdrs,
     default_hdrs=False,
     live=False,
+    secret_key=_session_secret,
     key_fname=str(_session_key),
     same_site="strict",
     middleware=(
@@ -56,7 +85,6 @@ app, rt = fast_app(
     ),
     static_path=str(STATIC_DIR),
 )
-ensure_private_path(_session_key, directory=False)
 
 
 @app.on_event("startup")

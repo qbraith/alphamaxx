@@ -10,7 +10,10 @@ import math
 
 
 def _finite(name: str, value: float) -> float:
-    value = float(value)
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{name} must be a finite number") from None
     if not math.isfinite(value):
         raise ValueError(f"{name} must be finite")
     return value
@@ -36,7 +39,7 @@ def project_dcf(
         raise ValueError("discount rate must be greater than -100%")
     if exit_multiple < 0:
         raise ValueError("exit multiple cannot be negative")
-    if not isinstance(years, int) or not 1 <= years <= 50:
+    if type(years) is not int or not 1 <= years <= 50:
         raise ValueError("years must be an integer from 1 through 50")
 
     try:
@@ -46,14 +49,26 @@ def project_dcf(
         discounted_value = round(terminal_value / (1 + discount) ** years, 2)
     except (OverflowError, ZeroDivisionError):
         raise ValueError("assumptions produce a value outside the supported range") from None
+    if not all(
+        math.isfinite(value)
+        for value in (*path, terminal_value, discounted_value)
+    ):
+        raise ValueError("assumptions produce a value outside the supported range")
 
     start = base_value * exit_multiple
     projected_metric_cagr = None
     if start > 0 and terminal_value > 0:
-        projected_metric_cagr = round(
-            ((terminal_value / start) ** (1 / years) - 1) * 100,
-            1,
-        )
+        try:
+            projected_metric_cagr = round(
+                ((terminal_value / start) ** (1 / years) - 1) * 100,
+                1,
+            )
+        except OverflowError:
+            raise ValueError(
+                "assumptions produce a value outside the supported range"
+            ) from None
+        if not math.isfinite(projected_metric_cagr):
+            raise ValueError("assumptions produce a value outside the supported range")
 
     return {
         "path": path,

@@ -171,3 +171,30 @@ def test_legacy_split_migration_is_one_way_and_idempotent(db):
     assert db.execute(
         "SELECT split_factor FROM prices WHERE permno = ?", [permno],
     ).fetchone() == (1.0,)
+
+
+def test_stock_split_upsert_skips_malformed_factors(db):
+    from datetime import date
+
+    from alphamaxx.data import upsert_stock_splits
+
+    permno = 999006
+    db.execute(
+        "INSERT OR REPLACE INTO companies (permno, ticker, name) "
+        "VALUES (?, 'BADF', 'Malformed Factor Corp')",
+        [permno],
+    )
+    db.execute("DELETE FROM stock_splits WHERE permno = ?", [permno])
+    event_date = date(2026, 8, 12)
+    assert upsert_stock_splits(permno, [
+        (event_date, None),
+        (event_date, "not-a-number"),
+        (event_date, float("nan")),
+        (event_date, float("inf")),
+        (event_date, -2.0),
+        (event_date, 0.0),
+        (event_date, 1.0),
+    ]) == 0
+    assert db.execute(
+        "SELECT COUNT(*) FROM stock_splits WHERE permno = ?", [permno],
+    ).fetchone() == (0,)

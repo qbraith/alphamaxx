@@ -6,6 +6,8 @@ path, so these tests never block on the network.
 """
 
 import json
+import os
+import stat
 from pathlib import Path
 
 import pytest
@@ -70,9 +72,43 @@ def test_local_request_boundary_allows_same_origin_and_sets_headers(client):
     )
     assert response.status_code == 200
     page = client.get("/")
+    assert page.headers["cache-control"] == "no-store"
+    assert page.headers["cross-origin-opener-policy"] == "same-origin"
     assert page.headers["x-content-type-options"] == "nosniff"
     assert page.headers["x-frame-options"] == "DENY"
     assert "frame-ancestors 'none'" in page.headers["content-security-policy"]
+    static = client.get("/style.css")
+    assert static.status_code == 200
+    assert static.headers.get("cache-control") != "no-store"
+
+
+def test_local_request_boundary_rejects_malformed_fetch_metadata(client):
+    response = client.get("/", headers={"sec-fetch-site": "unexpected"})
+    assert response.status_code == 403
+
+
+def test_session_key_creation_is_private_and_idempotent(tmp_path):
+    from alphamaxx.web.app import _load_or_create_session_key
+
+    path = tmp_path / "session-key"
+    first = _load_or_create_session_key(path)
+    second = _load_or_create_session_key(path)
+    assert first == second
+    assert len(first) >= 32
+    if os.name != "nt":
+        assert stat.S_IMODE(path.stat().st_mode) == 0o600
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX symlink behavior")
+def test_session_key_rejects_symlink(tmp_path):
+    from alphamaxx.web.app import _load_or_create_session_key
+
+    target = tmp_path / "unrelated"
+    target.write_text("do-not-use", encoding="utf-8")
+    path = tmp_path / "session-key"
+    path.symlink_to(target)
+    with pytest.raises(RuntimeError, match="regular file"):
+        _load_or_create_session_key(path)
 
 
 @pytest.mark.parametrize("path", ["/", "/watchlist", "/data-queue"])

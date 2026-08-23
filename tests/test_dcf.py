@@ -49,6 +49,7 @@ def test_negative_growth_scenario_ordering_is_not_inverted():
         {"exit_multiple": -1.0},
         {"base_value": -1.0},
         {"base_value": float("nan")},
+        {"base_value": float("inf")},
     ],
 )
 def test_project_dcf_rejects_invalid_domains(kwargs):
@@ -61,3 +62,10 @@ def test_project_dcf_rejects_invalid_domains(kwargs):
     values.update(kwargs)
     with pytest.raises(ValueError):
         project_dcf(**values)
+
+
+def test_project_dcf_rejects_boolean_or_extreme_years():
+    with pytest.raises(ValueError):
+        project_dcf(10.0, 0.10, 20.0, 0.10, years=True)
+    with pytest.raises(ValueError):
+        project_dcf(10.0, 0.10, 20.0, 0.10, years=51)

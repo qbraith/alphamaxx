@@ -12,10 +12,15 @@ _SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 _SECURITY_HEADERS = (
     (b"content-security-policy", b"default-src 'self'; img-src 'self' data:; "
      b"style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; "
-     b"connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"),
+     b"connect-src 'self'; object-src 'none'; frame-ancestors 'none'; "
+     b"base-uri 'none'; form-action 'self'"),
+    (b"cross-origin-opener-policy", b"same-origin"),
+    (b"cross-origin-resource-policy", b"same-origin"),
+    (b"permissions-policy", b"camera=(), microphone=(), geolocation=(), payment=(), usb=()"),
     (b"referrer-policy", b"no-referrer"),
     (b"x-content-type-options", b"nosniff"),
     (b"x-frame-options", b"DENY"),
+    (b"x-permitted-cross-domain-policies", b"none"),
 )
 
 
@@ -80,7 +85,12 @@ def _origin(value: str, default_scheme: str | None = None) -> tuple[str, str, in
         parsed = urlsplit(value if "://" in value else f"//{value}")
         scheme = (parsed.scheme or default_scheme or "").lower()
         host = (parsed.hostname or "").lower()
-        if not scheme or not host:
+        if (
+            scheme not in {"http", "https"}
+            or not host
+            or parsed.username is not None
+            or parsed.password is not None
+        ):
             return None
         port = parsed.port or (443 if scheme == "https" else 80)
     except ValueError:
@@ -117,7 +127,11 @@ class LocalRequestGuardMiddleware:
         origin_value = headers.get(b"origin", b"").decode("latin-1")
         referer_value = headers.get(b"referer", b"").decode("latin-1")
 
-        blocked = duplicate_security_headers or site == "cross-site"
+        blocked = (
+            duplicate_security_headers
+            or site == "cross-site"
+            or bool(site and site not in {"same-origin", "same-site", "none"})
+        )
         if origin_value and _origin(origin_value) != expected:
             blocked = True
         if scope.get("method", "GET").upper() not in _SAFE_METHODS:
@@ -131,8 +145,19 @@ class LocalRequestGuardMiddleware:
 
         async def send_with_security_headers(message):
             if message["type"] == "http.response.start":
-                present = {key.lower() for key, _ in message.get("headers", [])}
-                message.setdefault("headers", []).extend(
+                response_headers = message.setdefault("headers", [])
+                present = {key.lower() for key, _ in response_headers}
+                content_type = next(
+                    (value for key, value in response_headers
+                     if key.lower() == b"content-type"),
+                    b"",
+                ).split(b";", 1)[0].strip().lower()
+                if (
+                    content_type in {b"text/html", b"application/json"}
+                    and b"cache-control" not in present
+                ):
+                    response_headers.append((b"cache-control", b"no-store"))
+                response_headers.extend(
                     (key, value) for key, value in _SECURITY_HEADERS if key not in present
                 )
             await send(message)
