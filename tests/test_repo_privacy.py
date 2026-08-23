@@ -7,6 +7,7 @@ import hashlib
 import shutil
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -93,9 +94,31 @@ def _audit(repo: Path, *args: str, stdin: str | None = None) -> subprocess.Compl
     )
 
 
-def test_current_repository_passes_launch_audit():
-    result = _audit(ROOT, "--launch")
+def test_current_repository_passes_all_history_audit():
+    result = _audit(ROOT)
     assert result.returncode == 0, result.stderr
+
+
+def test_security_dependency_floors_and_dev_install_are_declared():
+    metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    dependencies = set(metadata["project"]["dependencies"])
+    assert {
+        "starlette>=1.3.1,<2",
+        "python-multipart>=0.0.31,<1",
+        "click>=8.3.3,<9",
+        "urllib3>=2.7,<3",
+        "idna>=3.18,<4",
+        "cryptography>=50,<51",
+        "pyasn1>=0.6.4,<1",
+        "soupsieve>=2.8.4,<3",
+    } <= dependencies
+    assert metadata["build-system"]["requires"][0].startswith("setuptools>=83")
+    assert "pytest>=9.0.3,<10" in set(
+        metadata["project"]["optional-dependencies"]["dev"]
+    )
+    assert (ROOT / "requirements-dev.txt").read_text(encoding="utf-8").strip() == (
+        "-e .[gemini,dev]"
+    )
 
 
 def test_pre_push_scans_exact_detached_commit(tmp_path):
